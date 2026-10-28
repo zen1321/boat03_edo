@@ -283,6 +283,22 @@ def render_main_page():
     st.markdown("---")
 
     # -----------------------------------------------------------------------------
+    # 🚩 艇ごとのフライング持ち（F持ち）設定
+    # -----------------------------------------------------------------------------
+    st.markdown("#### 🚨 フライング（F）持ち選手の設定")
+    f_cols = st.columns(6)
+    f_holders = {}
+    for i in range(1, 7):
+        with f_cols[i - 1]:
+            f_holders[i] = st.checkbox(
+                f"{i}号艇 F持ち",
+                value=False,
+                key=f"f_holder_boat_{i}"
+            )
+
+    st.markdown("---")
+
+    # -----------------------------------------------------------------------------
     # 3. スコア計算
     # -----------------------------------------------------------------------------
     if st.button("🚀 江戸川適性スコアを計算する", type="primary"):
@@ -294,6 +310,7 @@ def render_main_page():
         # 事前収集：展示タイムおよびスタートデータの整理
         for c_idx in range(6):
             col_name = COLUMNS[c_idx]
+            boat_num = c_idx + 1
             
             # 展示タイム
             raw_ex = str(edited_df.loc["展示", col_name]).strip()
@@ -311,10 +328,13 @@ def render_main_page():
             except ValueError:
                 avg_st = 0.15
 
+            is_f_holder_checked = f_holders.get(boat_num, False)
+
             start_inputs.append({
                 "avg_st": avg_st,
                 "ex_st": raw_st,
-                "is_f": f_holder
+                "is_f": f_holder,
+                "is_f_holder": is_f_holder_checked
             })
 
         # 全6艇分のスタートスコアを一括計算
@@ -394,7 +414,7 @@ def render_main_page():
         df_sorted.insert(0, "順位", [f"{i}位" for i in range(1, len(df_sorted) + 1)])
         st.session_state["latest_results"] = df_sorted
 
-# -----------------------------------------------------------------------------
+        # -----------------------------------------------------------------------------
         # 🎯 スコア差ベースの買い目生成（logic_bettingの呼び出し）
         # -----------------------------------------------------------------------------
         wave_height_val = 10 if wave_speed == "強" else (5 if wave_speed == "弱" else 0)

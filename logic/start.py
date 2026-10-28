@@ -1,26 +1,25 @@
-def calc_start_score(avg_st: float, ex_st_raw: str, is_f_holder: bool, rank_in_race: int = 3) -> float:
+def calc_start_score(avg_st: float, ex_st_raw: str, is_f_holder_flag: bool = False, rank_in_race: int = 3, is_f_holder: bool = False) -> float:
     """4. スタート力スコア（互換性維持のための個別計算用）"""
-    # 従来通りの個別計算（順位が直接渡されない場合はデフォルト3位扱い等）
-    return _calc_single_start(avg_st, ex_st_raw, is_f_holder, rank_in_race)
+    return _calc_single_start(avg_st, ex_st_raw, is_f_holder, rank_in_race, is_f_holder_flag)
 
 
 def calc_all_start_scores(st_data_list: list) -> list:
     """
     全6艇分のスタートデータをまとめて受け取り、F持ちを除外して順位を判定した上で
     正確なスタート力スコアのリストを返す関数
-    st_data_listの要素: {"avg_st": float, "ex_st": str, "is_f": bool}
+    st_data_listの要素: {"avg_st": float, "ex_st": str, "is_f": bool, "is_f_holder": bool}
     """
-    # 1. 各艇の有効な直前ST数値とF状態を抽出し、F持ち（直前STでFを切っている、またはFホルダー）を特定
     parsed_entries = []
     for i, data in enumerate(st_data_list):
         avg_st = data.get("avg_st", 0.15)
         ex_st_raw = str(data.get("ex_st", "")).strip().upper()
-        is_f_holder = data.get("is_f", False)
+        is_ex_f = data.get("is_f", False)  # 展示などでFを切っている状態
+        is_f_holder = data.get("is_f_holder", False)  # 👈 画面の「F持ち」チェックボックス
         
-        has_f = "F" in ex_st_raw or is_f_holder
+        has_f = "F" in ex_st_raw or is_ex_f
         
-        # 数値としてのSTを抽出（Fの場合は数値化）
-        val = 99.0  # データなし用のおきあがり値
+        # 数値としてのSTを抽出
+        val = 99.0
         if has_f:
             f_val_str = ex_st_raw.replace("F", "").replace(".", "0.")
             try:
@@ -31,42 +30,46 @@ def calc_all_start_scores(st_data_list: list) -> list:
             try:
                 val = float(ex_st_raw)
             except ValueError:
-                val = 99.0  # 欠損
+                val = 99.0
                 
         parsed_entries.append({
             "index": i,
             "avg_st": avg_st,
             "ex_st_raw": ex_st_raw,
             "is_f": has_f,
+            "is_f_holder": is_f_holder,  # 保持
             "val": val
         })
 
-    # 2. 「直前STがF持ち」を除外したグループで直前STの順位付けを行う
-    # ※F持ちを除いて順位をつけるため、F持ち以外の艇だけでソート
+    # 「直前STがF持ち」を除外したグループで直前STの順位付けを行う
     non_f_entries = [e for e in parsed_entries if not e["is_f"] and e["val"] != 99.0]
-    non_f_entries.sort(key=lambda x: x["val"]) # タイムが小さい（速い）順
+    non_f_entries.sort(key=lambda x: x["val"])
 
-    # 順位を割り当て (1位〜)
     rank_map = {}
     for rank_idx, entry in enumerate(non_f_entries, start=1):
         rank_map[entry["index"]] = rank_idx
         
-    # F持ちやデータなしの艇には仮の順位（圏外の3位以下など、例えば5位など）を割り振る
     for entry in parsed_entries:
         if entry["index"] not in rank_map:
-            rank_map[entry["index"]] = 99 # 3位以下扱い
+            rank_map[entry["index"]] = 99
 
-    # 3. 各艇のスコアを計算
+    # 各艇のスコアを計算
     scores = []
     for i, data in enumerate(parsed_entries):
         r_num = rank_map[i]
-        score = _calc_single_start(data["avg_st"], data["ex_st_raw"], data["is_f"], rank_in_race=r_num)
+        score = _calc_single_start(
+            data["avg_st"], 
+            data["ex_st_raw"], 
+            data["is_f"], 
+            rank_in_race=r_num,
+            is_f_holder_flag=data["is_f_holder"]  # 👈 ペナルティフラグを渡す
+        )
         scores.append(score)
 
     return scores
 
 
-def _calc_single_start(avg_st: float, ex_st_raw: str, is_f_holder: bool, rank_in_race: int) -> float:
+def _calc_single_start(avg_st: float, ex_st_raw: str, is_f: bool, rank_in_race: int, is_f_holder_flag: bool = False) -> float:
     # ① 平均STの調整
     if avg_st <= 0.12:
         avg_score = 2.0
@@ -82,7 +85,7 @@ def _calc_single_start(avg_st: float, ex_st_raw: str, is_f_holder: bool, rank_in
     ex_st_str = str(ex_st_raw).strip().upper()
     
     # ② 直前STでFを切っている場合の調整
-    if "F" in ex_st_str or is_f_holder:
+    if "F" in ex_st_str or is_f:
         f_val_str = ex_st_str.replace("F", "").replace(".", "0.")
         try:
             f_val = float(f_val_str)
@@ -95,28 +98,29 @@ def _calc_single_start(avg_st: float, ex_st_raw: str, is_f_holder: bool, rank_in
             f_score = 0.5
         else:
             f_score = 0.0
-        return avg_score + f_score
-
-    # ③ 通常の直前STデータの判定
-    try:
-        val = float(ex_st_str)
-    except ValueError:
-        # 直前STデータなし(欠損) : 0.0点
-        return avg_score + 0.0
-
-    is_top_2 = rank_in_race <= 2
-
-    # 直前STが2位以内 ＆ 平均ST 0.14以下 : 1.5点
-    if is_top_2 and avg_st <= 0.14:
-        st_cond_score = 1.5
-    # 直前STが2位以内 ＆ 平均ST 0.15以上 : 0.5点
-    elif is_top_2 and avg_st >= 0.15:
-        st_cond_score = 0.5
-    # 直前STが3位以内 ＆ 平均ST 0.14以下 : 1.0点
-    elif (not is_top_2) and avg_st <= 0.14:
-        st_cond_score = 1.0
-    # それ以外（3位以内 ＆ 平均ST 0.15以上）: 0.0点
+        base_score = avg_score + f_score
     else:
-        st_cond_score = 0.0
+        # ③ 通常の直前STデータの判定
+        try:
+            val = float(ex_st_str)
+        except ValueError:
+            val = 99.0
 
-    return avg_score + st_cond_score
+        is_top_2 = rank_in_race <= 2
+
+        if is_top_2 and avg_st <= 0.14:
+            st_cond_score = 1.5
+        elif is_top_2 and avg_st >= 0.15:
+            st_cond_score = 0.5
+        elif (not is_top_2) and avg_st <= 0.14:
+            st_cond_score = 1.0
+        else:
+            st_cond_score = 0.0
+
+        base_score = avg_score + st_cond_score
+
+    # ④ 🚨 画面でチェックされた「F持ち」ペナルティの適用
+    if is_f_holder_flag:
+        base_score -= 1.0  # 👈 F持ちによる慎重化ペナルティ（必要に応じて -1.5 などに変更可能）
+
+    return base_score

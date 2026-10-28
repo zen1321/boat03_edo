@@ -1,0 +1,14 @@
+[
+  {
+    "min_rate": 40.0,
+    "score": 3.0
+  },
+  {
+    "min_rate": 30.0,
+    "score": 1.5
+  },
+  {
+    "min_rate": 0.0,
+    "score": -1.5
+  }
+]

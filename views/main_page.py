@@ -173,11 +173,18 @@ def render_main_page():
             ["上げ潮", "下げ潮", "潮止まり"]
         )
 
+
     with col_env4:
-        wave_speed = st.selectbox(
+        wave_speed_label = st.selectbox(
             "波速",
-            ["強", "弱", "無"]
+            ["0cm", "30cm未満", "30cm以上"]
         )
+        if wave_speed_label == "0cm":
+            wave_speed = "無"
+        elif wave_speed_label == "30cm未満":
+            wave_speed = "弱"
+        else:
+            wave_speed = "強"
 
     with col_env5:
         st.write("") # 配置バランス調整用
